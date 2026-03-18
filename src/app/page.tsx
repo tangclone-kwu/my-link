@@ -6,7 +6,7 @@ export default function ProfilePage() {
       {/* Navigation */}
       <nav className="p-6 md:p-10 flex justify-between items-center border-b-4 border-black bg-white sticky top-0 z-50">
         <div className="text-3xl font-black uppercase tracking-tighter">
-          지은<span className="text-[#FF3366]">.DEV</span>
+          Wi tae hyun<span className="text-[#FF3366]">.DEV</span>
         </div>
         <a 
           href="#contact" 
@@ -169,7 +169,7 @@ export default function ProfilePage() {
           </a>
           
           <div className="mt-24 w-full flex flex-col md:flex-row justify-between items-center gap-6 border-t-4 border-black/50 pt-8">
-            <p className="font-bold text-lg">© 2026 Jieun.DEV</p>
+            <p className="font-bold text-lg">© 2026 Wi tae hyun.DEV</p>
             <div className="flex gap-6 font-black text-xl">
               <a href="#" className="hover:underline hover:text-[#FFD700]">Github</a>
               <a href="#" className="hover:underline hover:text-[#00E5FF]">LinkedIn</a>
