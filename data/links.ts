@@ -6,6 +6,11 @@ export interface LinkItem {
   clickCount?: number;
 }
 
+export const DUMMY_PROFILE = {
+  nickname: "dev123",
+  bio: "안녕하세요, 프론트엔드 개발자입니다.",
+};
+
 export const DUMMY_LINKS: LinkItem[] = [
   {
     linkId: "link_1",
