@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,33 +19,49 @@ import {
 } from "@/components/ui/dialog"
 import { DUMMY_LINKS, DUMMY_PROFILE, LinkItem } from "@/data/links"
 
+const formSchema = z.object({
+  title: z.string().optional(),
+  url: z.string().min(1, { message: "URL을 입력해주세요." }).refine(val => {
+    const urlToCheck = val.startsWith('http') ? val : `https://${val}`;
+    try {
+      new URL(urlToCheck);
+      return urlToCheck.includes('.');
+    } catch {
+      return false;
+    }
+  }, { message: "올바른 도메인/URL 형식이 아닙니다. (예: example.com)" })
+})
+
 export default function Page() {
   const [links, setLinks] = useState<LinkItem[]>(DUMMY_LINKS);
   const [isOpen, setIsOpen] = useState(false);
-  const [newUrl, setNewUrl] = useState("");
-  const [newTitle, setNewTitle] = useState("");
-  const [isUrlValid, setIsUrlValid] = useState(true);
 
-  const handleAddLink = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!newUrl) {
-      setIsUrlValid(false);
-      return;
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      title: "",
+      url: "",
+    },
+  })
+
+  useEffect(() => {
+    if (!isOpen) {
+      form.reset();
     }
-    setIsUrlValid(true);
+  }, [isOpen, form]);
+
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
+    const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
 
     const newLink: LinkItem = {
       linkId: `link_${Date.now()}`,
-      title: newTitle || newUrl.replace(/^https?:\/\/(www\.)?/, ''), // 기본 제목은 URL에서 추출
-      url: newUrl.startsWith('http') ? newUrl : `https://${newUrl}`,
+      title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
+      url: formattedUrl,
       createdAt: new Date().toISOString(),
       clickCount: 0,
     };
 
     setLinks([newLink, ...links]);
-    setNewUrl("");
-    setNewTitle("");
     setIsOpen(false);
   };
 
@@ -109,39 +128,37 @@ export default function Page() {
                   공유하고 싶은 웹사이트의 주소와 제목을 입력하세요.
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleAddLink}>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="title" className="font-semibold">
-                      제목 (선택)
-                    </Label>
-                    <Input
-                      id="title"
-                      placeholder="예: 내 포트폴리오"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="url" className="font-semibold">
-                      URL (필수)
-                    </Label>
-                    <Input
-                      id="url"
-                      placeholder="예: https://example.com"
-                      value={newUrl}
-                      onChange={(e) => {
-                        setNewUrl(e.target.value);
-                        if (e.target.value) setIsUrlValid(true);
-                      }}
-                      className={!isUrlValid ? "border-red-500 focus-visible:ring-red-500" : ""}
-                    />
-                    {!isUrlValid && (
-                      <p className="text-sm text-red-500">유효한 URL을 입력해주세요.</p>
-                    )}
-                  </div>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="title" className="font-semibold">제목 (선택)</Label>
+                  <Input 
+                    id="title" 
+                    placeholder="예: 내 포트폴리오" 
+                    {...form.register("title")} 
+                  />
+                  {form.formState.errors.title && (
+                    <p className="text-sm text-red-500 animate-in slide-in-from-top-1">
+                      {form.formState.errors.title.message}
+                    </p>
+                  )}
                 </div>
-                <DialogFooter>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="url" className="font-semibold">URL (필수)</Label>
+                  <Input 
+                    id="url" 
+                    placeholder="예: https://example.com" 
+                    {...form.register("url")} 
+                    className={form.formState.errors.url ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  />
+                  {form.formState.errors.url && (
+                    <p className="text-sm text-red-500 animate-in slide-in-from-top-1">
+                      {form.formState.errors.url.message}
+                    </p>
+                  )}
+                </div>
+
+                <DialogFooter className="pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
                     취소
                   </Button>
