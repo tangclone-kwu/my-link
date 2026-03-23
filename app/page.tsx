@@ -1,7 +1,51 @@
+"use client";
+
+import { useState } from "react";
 import { Card } from "@/components/ui/card"
-import { DUMMY_LINKS, DUMMY_PROFILE } from "@/data/links"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { DUMMY_LINKS, DUMMY_PROFILE, LinkItem } from "@/data/links"
 
 export default function Page() {
+  const [links, setLinks] = useState<LinkItem[]>(DUMMY_LINKS);
+  const [isOpen, setIsOpen] = useState(false);
+  const [newUrl, setNewUrl] = useState("");
+  const [newTitle, setNewTitle] = useState("");
+  const [isUrlValid, setIsUrlValid] = useState(true);
+
+  const handleAddLink = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newUrl) {
+      setIsUrlValid(false);
+      return;
+    }
+    setIsUrlValid(true);
+
+    const newLink: LinkItem = {
+      linkId: `link_${Date.now()}`,
+      title: newTitle || newUrl.replace(/^https?:\/\/(www\.)?/, ''), // 기본 제목은 URL에서 추출
+      url: newUrl.startsWith('http') ? newUrl : `https://${newUrl}`,
+      createdAt: new Date().toISOString(),
+      clickCount: 0,
+    };
+
+    setLinks([newLink, ...links]);
+    setNewUrl("");
+    setNewTitle("");
+    setIsOpen(false);
+  };
+
   return (
     <main className="relative flex min-h-screen flex-col items-center py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       
@@ -28,9 +72,86 @@ export default function Page() {
           </div>
         </section>
 
-        {/* Link List Section */}
+        {/* Links & Controls Section */}
         <section className="w-full flex flex-col gap-4">
-          {DUMMY_LINKS.map((link) => {
+          
+          {/* Add Link Button placed at the top of the list */}
+          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger
+              render={
+                <button
+                  className="group relative flex w-full min-h-[4.5rem] items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-indigo-200/80 bg-white/40 p-2 text-indigo-500 transition-all duration-300 hover:border-indigo-400 hover:bg-white/80 dark:border-indigo-900/50 dark:bg-slate-900/40 dark:text-indigo-400 dark:hover:border-indigo-500/80 dark:hover:bg-slate-800/80 shadow-sm backdrop-blur-xl"
+                />
+              }
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100/80 text-indigo-600 transition-all duration-300 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white dark:bg-indigo-950/80 dark:text-indigo-300 dark:group-hover:bg-indigo-500 dark:group-hover:text-white shadow-sm">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </div>
+              <span className="font-semibold tracking-wide">새로운 링크 추가하기</span>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>새 링크 추가</DialogTitle>
+                <DialogDescription>
+                  공유하고 싶은 웹사이트의 주소와 제목을 입력하세요.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddLink}>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="title" className="font-semibold">
+                      제목 (선택)
+                    </Label>
+                    <Input
+                      id="title"
+                      placeholder="예: 내 포트폴리오"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="url" className="font-semibold">
+                      URL (필수)
+                    </Label>
+                    <Input
+                      id="url"
+                      placeholder="예: https://example.com"
+                      value={newUrl}
+                      onChange={(e) => {
+                        setNewUrl(e.target.value);
+                        if (e.target.value) setIsUrlValid(true);
+                      }}
+                      className={!isUrlValid ? "border-red-500 focus-visible:ring-red-500" : ""}
+                    />
+                    {!isUrlValid && (
+                      <p className="text-sm text-red-500">유효한 URL을 입력해주세요.</p>
+                    )}
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+                    취소
+                  </Button>
+                  <Button type="submit">추가하기</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          {links.map((link) => {
             const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain_url=${link.url}`;
             return (
               <a
@@ -79,6 +200,11 @@ export default function Page() {
               </a>
             );
           })}
+          {links.length === 0 && (
+            <div className="text-center py-10 text-slate-500">
+              아직 추가된 링크가 없습니다.
+            </div>
+          )}
         </section>
       </div>
 
@@ -89,4 +215,5 @@ export default function Page() {
     </main>
   )
 }
+
 
