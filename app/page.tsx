@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, doc, setDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -39,6 +39,8 @@ export default function Page() {
   const [isOpen, setIsOpen] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
+  const [deletingLink, setDeletingLink] = useState<LinkItem | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -70,6 +72,56 @@ export default function Page() {
       form.reset();
     }
   }, [isOpen, form]);
+
+  const editForm = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      title: "",
+      url: "",
+    },
+  });
+
+  useEffect(() => {
+    if (editingLink) {
+      editForm.reset({
+        title: editingLink.title,
+        url: editingLink.url,
+      });
+    }
+  }, [editingLink, editForm]);
+
+  const handleDelete = async () => {
+    if (!deletingLink) return;
+    setIsSubmitting(true);
+    try {
+      await deleteDoc(doc(db, "users", "anonymous", "links", deletingLink.linkId));
+      setDeletingLink(null);
+    } catch (error) {
+      console.error("Error deleting document: ", error);
+      alert("링크 삭제 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onEditSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (!editingLink) return;
+    setIsSubmitting(true);
+    const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
+
+    try {
+      await updateDoc(doc(db, "users", "anonymous", "links", editingLink.linkId), {
+        title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
+        url: formattedUrl,
+      });
+      setEditingLink(null);
+    } catch (error) {
+      console.error("Error updating document: ", error);
+      alert("링크 수정 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
@@ -210,6 +262,42 @@ export default function Page() {
             </DialogContent>
           </Dialog>
 
+          {/* Delete Confirmation Modal */}
+          <Dialog open={!!deletingLink} onOpenChange={(open) => !open && setDeletingLink(null)}>
+            <DialogContent className="sm:max-w-[400px]">
+              <DialogHeader>
+                <DialogTitle>정말 삭제하시겠습니까?</DialogTitle>
+                <DialogDescription className="space-y-3 pt-4" asChild>
+                  <div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+                      <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">{deletingLink?.title}</p>
+                      <p className="text-sm text-slate-500 truncate">{deletingLink?.url}</p>
+                    </div>
+                    <p className="text-red-500 font-semibold text-sm">
+                      이 작업은 되돌릴 수 없습니다.
+                    </p>
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="mt-4">
+                <Button variant="outline" type="button" onClick={() => setDeletingLink(null)} disabled={isSubmitting}>
+                  취소
+                </Button>
+                <Button variant="destructive" type="button" onClick={handleDelete} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      삭제 중...
+                    </>
+                  ) : "삭제하기"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {isInitialLoading && (
             <div className="flex w-full justify-center py-10">
               <svg className="animate-spin h-8 w-8 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -221,51 +309,111 @@ export default function Page() {
 
           {!isInitialLoading && links.map((link) => {
             const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain_url=${link.url}`;
+            
+            if (editingLink?.linkId === link.linkId) {
+              return (
+                <Card key={link.linkId} className="relative flex w-full flex-col p-4 rounded-2xl border-2 border-indigo-400/50 bg-indigo-50/80 shadow-md dark:border-indigo-500/50 dark:bg-indigo-950/40 backdrop-blur-xl">
+                  <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="inline-edit-title" className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">제목</Label>
+                      <Input 
+                        id="inline-edit-title"
+                        placeholder="예: 내 포트폴리오" 
+                        {...editForm.register("title")} 
+                        className="bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800"
+                        autoFocus
+                      />
+                      {editForm.formState.errors.title && (
+                        <p className="text-xs text-red-500 font-medium">{editForm.formState.errors.title.message}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="inline-edit-url" className="text-xs font-semibold text-indigo-900 dark:text-indigo-200">URL <span className="text-red-500">*</span></Label>
+                      <Input 
+                        id="inline-edit-url"
+                        placeholder="예: https://example.com" 
+                        {...editForm.register("url")} 
+                        className={`bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 ${editForm.formState.errors.url ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                      />
+                      {editForm.formState.errors.url && (
+                        <p className="text-xs text-red-500 font-medium">{editForm.formState.errors.url.message}</p>
+                      )}
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1 border-t border-indigo-100 dark:border-indigo-900/50 mt-1">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setEditingLink(null)} disabled={isSubmitting} className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 dark:text-indigo-300 dark:hover:text-indigo-100 dark:hover:bg-indigo-900">
+                        취소
+                      </Button>
+                      <Button type="submit" size="sm" disabled={isSubmitting} className="bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-500 dark:hover:bg-indigo-600">
+                        {isSubmitting ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            갱신 중...
+                          </>
+                        ) : "갱신하기"}
+                      </Button>
+                    </div>
+                  </form>
+                </Card>
+              );
+            }
+
             return (
-              <a
+              <div
                 key={link.linkId}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="group relative block w-full transform transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02]"
               >
                 <div className="absolute -inset-0.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-cyan-400 opacity-0 blur transition-all duration-300 group-hover:opacity-40 dark:group-hover:opacity-60"></div>
-                <Card className="relative flex min-h-[4.5rem] w-full items-center justify-between rounded-2xl border border-slate-200/50 bg-white/70 p-2 pr-5 text-slate-800 shadow-sm backdrop-blur-xl transition-all duration-300 group-hover:bg-white/95 group-hover:shadow-lg dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:group-hover:bg-slate-800/90 overflow-hidden">
+                <Card className="relative flex min-h-[4.5rem] w-full items-center justify-between rounded-2xl border border-slate-200/50 bg-white/70 p-2 pr-3 text-slate-800 shadow-sm backdrop-blur-xl transition-all duration-300 group-hover:bg-white/95 group-hover:shadow-lg dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:group-hover:bg-slate-800/90 overflow-hidden">
                   
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-50 dark:bg-slate-800 shadow-inner overflow-hidden ml-1">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={faviconUrl}
-                      alt={`${link.title} icon`}
-                      className="h-6 w-6 object-contain"
-                      loading="lazy"
-                    />
-                  </div>
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center min-w-0 pr-2"
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-50 dark:bg-slate-800 shadow-inner overflow-hidden ml-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={faviconUrl}
+                        alt={`${link.title} icon`}
+                        className="h-6 w-6 object-contain"
+                        loading="lazy"
+                      />
+                    </div>
+                    
+                    <span className="flex-1 px-4 text-center text-md font-semibold tracking-wide truncate">
+                      {link.title}
+                    </span>
+                  </a>
                   
-                  <span className="flex-1 px-4 text-center text-md font-semibold tracking-wide">
-                    {link.title}
-                  </span>
-                  
-                  <div className="w-8 flex justify-end opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-slate-400 dark:text-slate-500"
+                  {/* Buttons */}
+                  <div className="flex shrink-0 items-center space-x-1 z-10 w-auto">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setEditingLink(link);
+                      }}
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:text-slate-500 dark:hover:text-indigo-400 dark:hover:bg-slate-800 rounded-full transition-colors flex items-center justify-center"
+                      title="수정"
                     >
-                      <path d="M5 12h14" />
-                      <line x1="12" y1="5" x2="19" y2="12" />
-                      <line x1="12" y1="19" x2="19" y2="12" />
-                    </svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setDeletingLink(link);
+                      }}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:text-slate-500 dark:hover:text-red-500 dark:hover:bg-red-950/50 rounded-full transition-colors flex items-center justify-center"
+                      title="삭제"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    </button>
                   </div>
                 </Card>
-              </a>
+              </div>
             );
           })}
           {!isInitialLoading && links.length === 0 && (
