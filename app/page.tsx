@@ -267,18 +267,20 @@ export default function Page() {
             <DialogContent className="sm:max-w-[400px]">
               <DialogHeader>
                 <DialogTitle>정말 삭제하시겠습니까?</DialogTitle>
-                <DialogDescription className="space-y-3 pt-4" asChild>
-                  <div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
-                      <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">{deletingLink?.title}</p>
-                      <p className="text-sm text-slate-500 truncate">{deletingLink?.url}</p>
-                    </div>
-                    <p className="text-red-500 font-semibold text-sm">
-                      이 작업은 되돌릴 수 없습니다.
-                    </p>
-                  </div>
+                <DialogDescription>
+                  삭제하려는 정보가 맞는지 확인해 주세요.
                 </DialogDescription>
               </DialogHeader>
+              
+              <div className="space-y-3 pt-4 px-1">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">{deletingLink?.title}</p>
+                  <p className="text-sm text-slate-500 truncate">{deletingLink?.url}</p>
+                </div>
+                <p className="text-red-500 font-semibold text-sm">
+                  이 작업은 되돌릴 수 없습니다.
+                </p>
+              </div>
               <DialogFooter className="mt-4">
                 <Button variant="outline" type="button" onClick={() => setDeletingLink(null)} disabled={isSubmitting}>
                   취소
