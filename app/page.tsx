@@ -113,6 +113,7 @@ export default function Page() {
       await updateDoc(doc(db, "users", "anonymous", "links", editingLink.linkId), {
         title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
         url: formattedUrl,
+        updatedAt: new Date().toISOString(),
       });
       setEditingLink(null);
     } catch (error) {
@@ -386,9 +387,19 @@ export default function Page() {
                       />
                     </div>
                     
-                    <span className="flex-1 px-4 text-center text-md font-semibold tracking-wide truncate">
-                      {link.title}
-                    </span>
+                    <div className="flex-1 flex flex-col justify-center px-4 overflow-hidden text-center">
+                      <span className="text-md font-semibold tracking-wide truncate">
+                        {link.title}
+                      </span>
+                      {link.updatedAt && (
+                        <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium truncate tracking-wide">
+                          최근 수정 {new Intl.DateTimeFormat('ko-KR', { 
+                            year: '2-digit', month: '2-digit', day: '2-digit', 
+                            hour: '2-digit', minute: '2-digit', hour12: false
+                          }).format(new Date(link.updatedAt))}
+                        </span>
+                      )}
+                    </div>
                   </a>
                   
                   {/* Buttons */}

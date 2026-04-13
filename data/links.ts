@@ -3,6 +3,7 @@ export interface LinkItem {
   title: string;
   url: string;
   createdAt: string; // ISO date string or Firebase Timestamp equivalent
+  updatedAt?: string;
   clickCount?: number;
 }
 
