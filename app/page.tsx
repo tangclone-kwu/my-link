@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { collection, doc, setDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
@@ -17,7 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { DUMMY_LINKS, DUMMY_PROFILE, LinkItem } from "@/data/links"
+import { DUMMY_PROFILE, LinkItem } from "@/data/links"
 
 const formSchema = z.object({
   title: z.string().optional(),
@@ -33,8 +35,10 @@ const formSchema = z.object({
 })
 
 export default function Page() {
-  const [links, setLinks] = useState<LinkItem[]>(DUMMY_LINKS);
+  const [links, setLinks] = useState<LinkItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -45,24 +49,50 @@ export default function Page() {
   })
 
   useEffect(() => {
+    const q = query(
+      collection(db, "users", "anonymous", "links"),
+      orderBy("createdAt", "desc")
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedLinks = snapshot.docs.map(doc => doc.data() as LinkItem);
+      setLinks(fetchedLinks);
+      setIsInitialLoading(false);
+    }, (error) => {
+      console.error("Error fetching links: ", error);
+      setIsInitialLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
     if (!isOpen) {
       form.reset();
     }
   }, [isOpen, form]);
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    setIsSubmitting(true);
     const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
 
+    const newLinkId = `link_${Date.now()}`;
     const newLink: LinkItem = {
-      linkId: `link_${Date.now()}`,
+      linkId: newLinkId,
       title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
       url: formattedUrl,
       createdAt: new Date().toISOString(),
       clickCount: 0,
     };
 
-    setLinks([newLink, ...links]);
-    setIsOpen(false);
+    try {
+      await setDoc(doc(collection(db, "users", "anonymous", "links"), newLinkId), newLink);
+      setIsOpen(false);
+    } catch (error) {
+      console.error("Error adding document: ", error);
+      alert("링크 추가 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -159,16 +189,37 @@ export default function Page() {
                 </div>
 
                 <DialogFooter className="pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+                  <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSubmitting}>
                     취소
                   </Button>
-                  <Button type="submit">추가하기</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        추가 중...
+                      </>
+                    ) : (
+                      "추가하기"
+                    )}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
 
-          {links.map((link) => {
+          {isInitialLoading && (
+            <div className="flex w-full justify-center py-10">
+              <svg className="animate-spin h-8 w-8 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+          )}
+
+          {!isInitialLoading && links.map((link) => {
             const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain_url=${link.url}`;
             return (
               <a
@@ -217,7 +268,7 @@ export default function Page() {
               </a>
             );
           })}
-          {links.length === 0 && (
+          {!isInitialLoading && links.length === 0 && (
             <div className="text-center py-10 text-slate-500">
               아직 추가된 링크가 없습니다.
             </div>
