@@ -173,28 +173,32 @@ export default function Page() {
     if (!user || !profile || !editingField) return;
 
     try {
+      const trimmedValue = editValue.trim();
+
+      if (trimmedValue === profile[editingField]) {
+        setEditingField(null);
+        return;
+      }
+
       if (editingField === 'nickname') {
-        const trimmedNickname = editValue.trim();
-        if (trimmedNickname === '') {
+        if (trimmedValue === '') {
           alert('닉네임을 입력해주세요.');
           setEditingField(null);
           return;
         }
 
-        if (trimmedNickname !== profile.nickname) {
-          const q = query(collection(db, "users"), where("nickname", "==", trimmedNickname));
-          const snapshot = await getDocs(q);
-          const duplicate = snapshot.docs.find(doc => doc.id !== user.uid);
-          if (duplicate) {
-            alert('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요!');
-            setEditingField(null);
-            return;
-          }
+        const q = query(collection(db, "users"), where("nickname", "==", trimmedValue));
+        const snapshot = await getDocs(q);
+        const duplicate = snapshot.docs.find(doc => doc.id !== user.uid);
+        if (duplicate) {
+          alert('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요!');
+          setEditingField(null);
+          return;
         }
       }
 
       await updateDoc(doc(db, "users", user.uid), {
-        [editingField]: editValue.trim(),
+        [editingField]: trimmedValue,
         updatedAt: new Date().toISOString()
       });
       
