@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. 유저 본체 (프로필: nickname, bio, email 등이 저장되는 곳)
+    // 참고: 기존 DB 구조상 users/{userid}/profile 이 아닌 users/{userid} 본체에 프로필이 저장됩니다.
+    match /users/{userId} {
+      // 읽기: 누구나 퍼블릭 프로필 조회를 위해 접근 가능
+      allow read: if true;
+      
+      // 쓰기: 로그인한 고유 UID와 문서 ID가 일치할 때만 프로필 생성 및 편집 허용
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 2. 유저별 링크 모음 (users/{userid}/links 서브컬렉션)
+    match /users/{userId}/links/{linkId} {
+      // 읽기: 누구나 퍼블릭 링크를 클릭하고 보기 위해 접근 가능
+      allow read: if true;
+      
+      // 쓰기: 본인 소유의 프로필(userId) 하위에 있는 링크만 추가/삭제/수정 가능
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
