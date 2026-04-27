@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
+import { db, auth } from "@/lib/firebase";
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
@@ -41,6 +42,9 @@ export default function Page() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
   const [deletingLink, setDeletingLink] = useState<LinkItem | null>(null);
+  
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -51,8 +55,23 @@ export default function Page() {
   })
 
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setLinks([]);
+      setIsInitialLoading(false);
+      return;
+    }
+
+    setIsInitialLoading(true);
     const q = query(
-      collection(db, "users", "anonymous", "links"),
+      collection(db, "users", user.uid, "links"),
       orderBy("createdAt", "desc")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -65,7 +84,7 @@ export default function Page() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -90,11 +109,29 @@ export default function Page() {
     }
   }, [editingLink, editForm]);
 
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("로그인 중 오류가 발생했습니다.");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
   const handleDelete = async () => {
-    if (!deletingLink) return;
+    if (!deletingLink || !user) return;
     setIsSubmitting(true);
     try {
-      await deleteDoc(doc(db, "users", "anonymous", "links", deletingLink.linkId));
+      await deleteDoc(doc(db, "users", user.uid, "links", deletingLink.linkId));
       setDeletingLink(null);
     } catch (error) {
       console.error("Error deleting document: ", error);
@@ -105,12 +142,12 @@ export default function Page() {
   };
 
   const onEditSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (!editingLink) return;
+    if (!editingLink || !user) return;
     setIsSubmitting(true);
     const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
 
     try {
-      await updateDoc(doc(db, "users", "anonymous", "links", editingLink.linkId), {
+      await updateDoc(doc(db, "users", user.uid, "links", editingLink.linkId), {
         title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
         url: formattedUrl,
         updatedAt: new Date().toISOString(),
@@ -125,6 +162,7 @@ export default function Page() {
   };
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (!user) return;
     setIsSubmitting(true);
     const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
 
@@ -138,7 +176,7 @@ export default function Page() {
     };
 
     try {
-      await setDoc(doc(collection(db, "users", "anonymous", "links"), newLinkId), newLink);
+      await setDoc(doc(collection(db, "users", user.uid, "links"), newLinkId), newLink);
       setIsOpen(false);
     } catch (error) {
       console.error("Error adding document: ", error);
@@ -148,8 +186,67 @@ export default function Page() {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+        <svg className="animate-spin h-10 w-10 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="relative flex min-h-screen flex-col items-center py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+        <header className="w-full max-w-5xl flex items-center justify-start py-4 mb-10 md:mb-20 z-10">
+          <div className="flex items-center gap-2 select-none">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-white font-bold text-xl shadow-md">M</div>
+            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">My Link</span>
+          </div>
+        </header>
+
+        <div className="pointer-events-none absolute inset-0 overflow-hidden flex justify-center">
+          <div className="absolute top-1/4 h-96 w-96 rounded-full bg-indigo-300 mix-blend-multiply blur-3xl opacity-30 dark:bg-indigo-900 dark:mix-blend-screen dark:opacity-20 animate-pulse transition-all duration-1000"></div>
+          <div className="absolute top-1/3 right-1/4 h-80 w-80 rounded-full bg-cyan-300 mix-blend-multiply blur-3xl opacity-30 dark:bg-cyan-900 dark:mix-blend-screen dark:opacity-20 animate-pulse delay-75 transition-all duration-1000"></div>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md gap-10 z-10 pb-20">
+          <div className="text-center space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
+              나만의 모든 링크,<br />단 하나의 주소로.
+            </h1>
+            <p className="text-lg text-slate-600 dark:text-slate-400 font-medium">
+              여러 곳에 흩어져 있는 내 정보를 한 곳에 모아보세요.<br className="hidden sm:inline" />
+              지금 시작하시면 바로 사용할 수 있습니다.
+            </p>
+          </div>
+
+          <button
+            onClick={handleLogin}
+            className="group relative flex h-14 w-full max-w-sm items-center justify-center gap-3 rounded-2xl bg-white shadow-xl shadow-indigo-200/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-indigo-300/50 dark:bg-slate-900 dark:shadow-none dark:ring-1 dark:ring-slate-800 dark:hover:bg-slate-800 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-150"
+          >
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 opacity-0 transition-opacity duration-300 group-hover:opacity-10 dark:from-indigo-500 dark:to-cyan-400 dark:group-hover:opacity-20"></div>
+            <svg className="h-6 w-6 relative z-10" viewBox="0 0 24 24">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+            </svg>
+            <span className="text-lg font-semibold text-slate-700 dark:text-slate-200 relative z-10">Google로 시작하기</span>
+          </button>
+        </div>
+
+        <footer className="mt-auto pt-16 pb-4 text-center text-sm font-semibold tracking-tight text-slate-400 dark:text-slate-500 z-10">
+          © {new Date().getFullYear()} My Link. All rights reserved.
+        </footer>
+      </main>
+    );
+  }
+
   return (
-    <main className="relative flex min-h-screen flex-col items-center py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <main className="relative flex min-h-screen flex-col items-center py-6 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 animate-in fade-in duration-500">
       
       {/* Decorative background blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden flex justify-center">
@@ -157,16 +254,32 @@ export default function Page() {
         <div className="absolute top-32 right-1/4 h-72 w-72 rounded-full bg-cyan-300 mix-blend-multiply blur-3xl opacity-30 dark:bg-cyan-900 dark:mix-blend-screen dark:opacity-20 animate-pulse delay-75 transition-all duration-1000"></div>
       </div>
 
+      <header className="w-full max-w-md flex items-center justify-between py-2 mb-6 z-10">
+        <div className="flex items-center gap-2 select-none">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-white font-bold text-xl shadow-md">M</div>
+          <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">My Link</span>
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+          로그아웃
+        </Button>
+      </header>
+
       <div className="z-10 flex w-full max-w-md flex-col items-center gap-10">
         
         {/* Profile Section */}
-        <section className="flex flex-col items-center text-center gap-5">
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-500 to-cyan-400 text-white shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 text-4xl font-black uppercase tracking-tighter ring-4 ring-white dark:ring-slate-900">
-            {DUMMY_PROFILE.nickname.charAt(0)}
+        <section className="flex flex-col items-center text-center gap-5 w-full">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full overflow-hidden bg-gradient-to-tr from-indigo-500 to-cyan-400 text-white shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 text-4xl font-black uppercase tracking-tighter ring-4 ring-white dark:ring-slate-900">
+            {user.photoURL ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={user.photoURL} alt="Profile" className="h-full w-full object-cover" />
+            ) : (
+              (user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname)).charAt(0).toUpperCase()
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              @{DUMMY_PROFILE.nickname}
+              @{user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname)}
             </h1>
             <p className="text-base font-medium text-slate-600 dark:text-slate-400">
               {DUMMY_PROFILE.bio}
