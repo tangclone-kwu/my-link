@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, getDocs, where } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, getDocs, where, runTransaction } from "firebase/firestore";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
@@ -92,8 +92,19 @@ export default function Page() {
           email: user.email || "",
           updatedAt: new Date().toISOString()
         };
-        await setDoc(profileRef, newProfile);
-        return newProfile;
+        // 최초 가입 시 닉네임 선점 문서도 함께 생성 (Race Condition 방지)
+        await runTransaction(db, async (transaction) => {
+          const usernameRef = doc(db, "usernames", defaultNickname);
+          const usernameSnap = await transaction.get(usernameRef);
+          // 닉네임이 이미 선점되어 있다면, 이메일 앞쪽에 suffix 추가
+          const finalNickname = (usernameSnap.exists() && usernameSnap.data().uid !== user.uid)
+            ? `${defaultNickname}_${user.uid.slice(0, 5)}`
+            : defaultNickname;
+          const finalUsernameRef = doc(db, "usernames", finalNickname);
+          transaction.set(finalUsernameRef, { uid: user.uid });
+          transaction.set(doc(db, "users", user.uid), { ...newProfile, nickname: finalNickname });
+        });
+        return { ...newProfile, nickname: newProfile.nickname };
       }
       return docSnapshot.data() as { nickname: string; bio: string };
     },
@@ -154,16 +165,45 @@ export default function Page() {
 
       if (field === 'nickname') {
         if (trimmedValue === '') throw new Error('닉네임을 입력해주세요.');
-        const q = query(collection(db, "users"), where("nickname", "==", trimmedValue));
-        const snapshot = await getDocs(q);
-        const duplicate = snapshot.docs.find(d => d.id !== user.uid);
-        if (duplicate) throw new Error('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요!');
+
+        // ✅ 원자적 트랜잭션: 닉네임 선점 경쟁(Race Condition) 원천 차단
+        await runTransaction(db, async (transaction) => {
+          const newUsernameRef = doc(db, "usernames", trimmedValue);
+          const oldNickname = profile?.nickname;
+          const oldUsernameRef = oldNickname ? doc(db, "usernames", oldNickname) : null;
+
+          const newUsernameSnap = await transaction.get(newUsernameRef);
+
+          // 이미 다른 유저가 해당 닉네임을 선점했다면 실패
+          if (newUsernameSnap.exists() && newUsernameSnap.data().uid !== user.uid) {
+            throw new Error('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요!');
+          }
+
+          const userRef = doc(db, "users", user.uid);
+
+          // 기존 닉네임 문서 해제 (삭제)
+          if (oldUsernameRef && oldNickname !== trimmedValue) {
+            transaction.delete(oldUsernameRef);
+          }
+
+          // 새 닉네임 선점 문서 생성
+          transaction.set(newUsernameRef, { uid: user.uid });
+
+          // 유저 프로필 업데이트
+          transaction.update(userRef, {
+            nickname: trimmedValue,
+            updatedAt: new Date().toISOString(),
+          });
+        });
+
+      } else {
+        // bio는 기존 단순 업데이트 유지
+        await updateDoc(doc(db, "users", user.uid), {
+          [field]: trimmedValue,
+          updatedAt: new Date().toISOString(),
+        });
       }
 
-      await updateDoc(doc(db, "users", user.uid), {
-        [field]: trimmedValue,
-        updatedAt: new Date().toISOString()
-      });
       return trimmedValue;
     },
     onMutate: async ({ field, value }) => {

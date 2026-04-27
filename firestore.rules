@@ -3,38 +3,85 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // 1. 유저 본체 (프로필 정보 보관)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // [1] 닉네임 선점 테이블 (Race Condition 방지)
+    //     /usernames/{nickname} → { uid: "..." }
+    //     닉네임을 선점한 트랜잭션만 성공. 남이 먼저 쓰면 실패.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    match /usernames/{username} {
+      allow read: if true;
+
+      // 신규 생성: 로그인 유저가 자신의 uid를 담은 문서만 생성 가능
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid;
+
+      // 삭제: 기존에 등록된 uid와 요청 uid가 일치해야만 삭제 가능 (닉네임 변경 시 기존 닉네임 해제)
+      allow delete: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
+
+      // update는 허용 안 함 (삭제 후 재생성으로 처리)
+      allow update: if false;
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // [2] 유저 프로필 (nickname, bio, email 등 본체)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     match /users/{userId} {
       allow read: if true;
-      
-      // 쓰기 및 수정 권한
-      allow write: if request.auth != null 
+
+      allow write: if request.auth != null
                    && request.auth.uid == userId
-                   
-                   // [무결성 1] 닉네임 타입 및 글자 수 제한 (공백 불가, 최대 30자)
+
+                   // [무결성] 허용된 필드 외 임의 필드 추가 차단
+                   && request.resource.data.keys().hasOnly(['uid', 'nickname', 'bio', 'email', 'updatedAt'])
+
+                   // [무결성] 닉네임 타입 및 길이 제한 (1~30자)
                    && request.resource.data.nickname is string
-                   && request.resource.data.nickname.size() > 0 
+                   && request.resource.data.nickname.size() > 0
                    && request.resource.data.nickname.size() <= 30
-                   
-                   // [무결성 2] 악의적인 UID 변조 방지 (수정 시 기존 uid 유지)
-                   // 단, 처음 생성할 때(resource == null)는 무조건 통과하도록 처리
+
+                   // [무결성] bio 길이 제한 (최대 150자)
+                   && request.resource.data.bio is string
+                   && request.resource.data.bio.size() <= 150
+
+                   // [무결성] uid 변조 방지 (최초 생성 제외)
                    && (resource == null || request.resource.data.uid == resource.data.uid);
     }
 
-    // 2. 유저별 링크 모음 서브컬렉션
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // [3] 링크 서브컬렉션
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     match /users/{userId}/links/{linkId} {
       allow read: if true;
-      
-      allow write: if request.auth != null 
-                   && request.auth.uid == userId
-                   
-                   // [무결성 3] 타이틀의 존재 여부 및 길이 제한
-                   && request.resource.data.title is string
-                   && request.resource.data.title.size() <= 100
-                   
-                   // [무결성 4] URL 검증: 반드시 http 가 포함된 올바른 주소 형태만 허용
-                   && request.resource.data.url is string
-                   && request.resource.data.url.matches('^https?://.*');
+
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+
+                    // [무결성] 허용된 필드 외 임의 필드 추가 차단
+                    && request.resource.data.keys().hasOnly(['linkId', 'title', 'url', 'createdAt', 'clickCount', 'updatedAt'])
+
+                    // [무결성] 제목 길이 제한
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() <= 100
+
+                    // [무결성] URL 형식 강제
+                    && request.resource.data.url is string
+                    && request.resource.data.url.matches('^https?://.*');
+
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+
+                    // [무결성] 링크 수정 시 createdAt 변조 방지
+                    && request.resource.data.createdAt == resource.data.createdAt
+
+                    && request.resource.data.keys().hasOnly(['linkId', 'title', 'url', 'createdAt', 'clickCount', 'updatedAt'])
+                    && request.resource.data.title is string
+                    && request.resource.data.title.size() <= 100
+                    && request.resource.data.url is string
+                    && request.resource.data.url.matches('^https?://.*');
+
+      allow delete: if request.auth != null
+                    && request.auth.uid == userId;
     }
   }
 }
