@@ -383,7 +383,7 @@ export default function Page() {
             <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-800" />
             <DropdownMenuItem 
               onClick={() => {
-                const profileUrl = `${window.location.origin}/@${user.email ? user.email.split('@')[0] : 'me'}`;
+                const profileUrl = `${window.location.origin}/@${currentNickname}`;
                 navigator.clipboard.writeText(profileUrl);
                 alert('내 프로필 링크가 클립보드에 복사되었습니다!');
               }}
@@ -391,6 +391,15 @@ export default function Page() {
             >
               <Link2 className="mr-3 h-4 w-4 text-slate-500 dark:text-slate-400" />
               <span>프로필 링크 복사</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => {
+                window.open(`/@${currentNickname}`, '_blank');
+              }}
+              className="cursor-pointer py-2 px-3 text-sm focus:bg-slate-100 dark:focus:bg-slate-800"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-3 h-4 w-4 text-slate-500 dark:text-slate-400"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+              <span>내 프로필 방문</span>
             </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={() => alert("현재 프로필 설정 편집 기능은 준비 중입니다.")}
