@@ -356,9 +356,17 @@ export default function Page() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-white font-bold text-xl shadow-md">M</div>
           <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">My Link</span>
         </div>
-        
-        {/* Profile Dropdown */}
-        <DropdownMenu>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => window.open(`/@${currentNickname}`, '_blank')}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 shadow-sm rounded-full hover:bg-slate-50 hover:text-indigo-600 transition-colors dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-cyan-400 ring-1 ring-transparent focus:outline-none focus-visible:ring-indigo-500"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+            내 페이지
+          </button>
+          
+          {/* Profile Dropdown */}
+          <DropdownMenu>
           <DropdownMenuTrigger className="rounded-full ring-2 ring-indigo-100 dark:ring-indigo-900/50 hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-indigo-500 flex items-center justify-center bg-transparent cursor-pointer">
             <Avatar className="h-10 w-10">
               {user.photoURL ? (
@@ -429,6 +437,7 @@ export default function Page() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </header>
 
       <div className="z-10 flex w-full max-w-md flex-col items-center gap-10">
