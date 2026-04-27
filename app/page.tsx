@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, getDocs, where } from "firebase/firestore";
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -57,7 +57,13 @@ export default function Page() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  const [profile, setProfile] = useState<{ nickname: string; bio: string } | null>(null);
+  const [editingField, setEditingField] = useState<'nickname' | 'bio' | null>(null);
+  const [editValue, setEditValue] = useState("");
+
   const { resolvedTheme, setTheme } = useTheme();
+
+  const currentNickname = profile?.nickname || (user?.email ? user.email.split('@')[0] : (user?.displayName || DUMMY_PROFILE.nickname));
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -78,16 +84,36 @@ export default function Page() {
   useEffect(() => {
     if (!user) {
       setLinks([]);
+      setProfile(null);
       setIsInitialLoading(false);
       return;
     }
 
     setIsInitialLoading(true);
+
+    const profileRef = doc(db, "users", user.uid);
+    const unsubscribeProfile = onSnapshot(profileRef, async (docSnapshot) => {
+      if (!docSnapshot.exists()) {
+        const defaultNickname = user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname);
+        const newProfile = {
+          uid: user.uid,
+          nickname: defaultNickname,
+          bio: DUMMY_PROFILE.bio,
+          email: user.email || "",
+          updatedAt: new Date().toISOString()
+        };
+        await setDoc(profileRef, newProfile);
+        setProfile(newProfile);
+      } else {
+        setProfile(docSnapshot.data() as { nickname: string; bio: string });
+      }
+    });
+
     const q = query(
       collection(db, "users", user.uid, "links"),
       orderBy("createdAt", "desc")
     );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribeLinks = onSnapshot(q, (snapshot) => {
       const fetchedLinks = snapshot.docs.map(doc => doc.data() as LinkItem);
       setLinks(fetchedLinks);
       setIsInitialLoading(false);
@@ -96,7 +122,10 @@ export default function Page() {
       setIsInitialLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeProfile();
+      unsubscribeLinks();
+    };
   }, [user]);
 
   useEffect(() => {
@@ -137,6 +166,42 @@ export default function Page() {
       await signOut(auth);
     } catch (error) {
       console.error("Logout error:", error);
+    }
+  };
+
+  const handleProfileUpdate = async () => {
+    if (!user || !profile || !editingField) return;
+
+    try {
+      if (editingField === 'nickname') {
+        const trimmedNickname = editValue.trim();
+        if (trimmedNickname === '') {
+          alert('닉네임을 입력해주세요.');
+          setEditingField(null);
+          return;
+        }
+
+        if (trimmedNickname !== profile.nickname) {
+          const q = query(collection(db, "users"), where("nickname", "==", trimmedNickname));
+          const snapshot = await getDocs(q);
+          const duplicate = snapshot.docs.find(doc => doc.id !== user.uid);
+          if (duplicate) {
+            alert('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요!');
+            setEditingField(null);
+            return;
+          }
+        }
+      }
+
+      await updateDoc(doc(db, "users", user.uid), {
+        [editingField]: editValue.trim(),
+        updatedAt: new Date().toISOString()
+      });
+      
+      setEditingField(null);
+    } catch (error) {
+      console.error("Error updating profile: ", error);
+      alert("프로필 수정 중 오류가 발생했습니다.");
     }
   };
 
@@ -275,17 +340,15 @@ export default function Page() {
         
         {/* Profile Dropdown */}
         <DropdownMenu>
-          <DropdownMenuTrigger className="outline-none" asChild>
-            <button className="rounded-full ring-2 ring-indigo-100 dark:ring-indigo-900/50 hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-indigo-500 flex items-center justify-center bg-transparent">
-              <Avatar className="h-10 w-10">
-                {user.photoURL ? (
-                  <AvatarImage src={user.photoURL} alt="Profile" className="object-cover" />
-                ) : null}
-                <AvatarFallback className="bg-gradient-to-tr from-indigo-500 to-cyan-400 text-white font-bold">
-                  {(user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname)).charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-            </button>
+          <DropdownMenuTrigger className="rounded-full ring-2 ring-indigo-100 dark:ring-indigo-900/50 hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-indigo-500 flex items-center justify-center bg-transparent cursor-pointer">
+            <Avatar className="h-10 w-10">
+              {user.photoURL ? (
+                <AvatarImage src={user.photoURL} alt="Profile" className="object-cover" />
+              ) : null}
+              <AvatarFallback className="bg-gradient-to-tr from-indigo-500 to-cyan-400 text-white font-bold">
+                {(user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname)).charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 mt-2 rounded-xl border-slate-200 shadow-xl dark:border-slate-800">
             <DropdownMenuLabel className="font-normal py-3 px-3">
@@ -344,21 +407,66 @@ export default function Page() {
         
         {/* Profile Section */}
         <section className="flex flex-col items-center text-center gap-5 w-full">
-          <div className="flex h-24 w-24 items-center justify-center rounded-full overflow-hidden bg-gradient-to-tr from-indigo-500 to-cyan-400 text-white shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 text-4xl font-black uppercase tracking-tighter ring-4 ring-white dark:ring-slate-900">
+          <div className="group relative flex h-24 w-24 items-center justify-center rounded-full overflow-hidden bg-gradient-to-tr from-indigo-500 to-cyan-400 text-white shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 text-4xl font-black uppercase tracking-tighter ring-4 ring-white dark:ring-slate-900">
             {user.photoURL ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={user.photoURL} alt="Profile" className="h-full w-full object-cover" />
             ) : (
-              (user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname)).charAt(0).toUpperCase()
+              currentNickname.charAt(0).toUpperCase()
             )}
           </div>
-          <div className="flex flex-col gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              @{user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname)}
-            </h1>
-            <p className="text-base font-medium text-slate-600 dark:text-slate-400">
-              {DUMMY_PROFILE.bio}
-            </p>
+          <div className="flex flex-col gap-2 relative w-full items-center">
+            {editingField === 'nickname' ? (
+              <Input
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleProfileUpdate}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleProfileUpdate();
+                  if (e.key === 'Escape') setEditingField(null);
+                }}
+                className="text-2xl font-bold text-center max-w-[200px] h-10 border-indigo-200 focus-visible:ring-indigo-500 bg-white dark:bg-slate-900"
+              />
+            ) : (
+              <h1 
+                className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md px-2 py-1 transition-colors group flex items-center justify-center gap-1"
+                onClick={() => {
+                  setEditValue(currentNickname);
+                  setEditingField('nickname');
+                }}
+                title="닉네임 수정"
+              >
+                @{currentNickname}
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-0 group-hover:opacity-50 transition-opacity"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              </h1>
+            )}
+
+            {editingField === 'bio' ? (
+              <Input
+                autoFocus
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleProfileUpdate}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleProfileUpdate();
+                  if (e.key === 'Escape') setEditingField(null);
+                }}
+                className="text-base font-medium text-center max-w-[300px] h-8 border-indigo-200 focus-visible:ring-indigo-500 bg-white dark:bg-slate-900"
+              />
+            ) : (
+              <p 
+                className="text-base font-medium text-slate-600 dark:text-slate-400 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md px-2 py-1 transition-colors min-h-[1.5rem] min-w-[5rem] group flex items-center justify-center gap-1"
+                onClick={() => {
+                  setEditValue(profile?.bio || DUMMY_PROFILE.bio);
+                  setEditingField('bio');
+                }}
+                title="소개글 수정"
+              >
+                {profile?.bio || DUMMY_PROFILE.bio}
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-0 group-hover:opacity-50 transition-opacity"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              </p>
+            )}
           </div>
         </section>
 
