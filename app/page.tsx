@@ -166,14 +166,34 @@ export default function Page() {
       });
       return trimmedValue;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile', user?.uid] });
+    onMutate: async ({ field, value }) => {
       setEditingField(null);
+      const trimmedValue = value.trim();
+      
+      await queryClient.cancelQueries({ queryKey: ['profile', user?.uid] });
+
+      const previousProfile = queryClient.getQueryData<{ nickname: string, bio: string }>(['profile', user?.uid]);
+
+      if (previousProfile) {
+        queryClient.setQueryData(['profile', user?.uid], {
+          ...previousProfile,
+          [field]: trimmedValue,
+        });
+      }
+
+      return { previousProfile };
     },
-    onError: (error: any) => {
+    onError: (error: any, variables, context) => {
       console.error("Error updating profile:", error);
       alert(error.message || "프로필 수정 중 오류가 발생했습니다.");
-      setEditingField(null);
+      
+      if (context?.previousProfile) {
+        queryClient.setQueryData(['profile', user?.uid], context.previousProfile);
+      }
+      setEditingField(variables.field);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.uid] });
     }
   });
 
