@@ -7,10 +7,21 @@ import { db, auth } from "@/lib/firebase";
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
+import { useTheme } from "next-themes"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Link2, LogOut, Moon, Settings, Sun } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -45,6 +56,8 @@ export default function Page() {
   
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  const { resolvedTheme, setTheme } = useTheme();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -259,10 +272,72 @@ export default function Page() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-white font-bold text-xl shadow-md">M</div>
           <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">My Link</span>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-          로그아웃
-        </Button>
+        
+        {/* Profile Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger className="outline-none" asChild>
+            <button className="rounded-full ring-2 ring-indigo-100 dark:ring-indigo-900/50 hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-indigo-500 flex items-center justify-center bg-transparent">
+              <Avatar className="h-10 w-10">
+                {user.photoURL ? (
+                  <AvatarImage src={user.photoURL} alt="Profile" className="object-cover" />
+                ) : null}
+                <AvatarFallback className="bg-gradient-to-tr from-indigo-500 to-cyan-400 text-white font-bold">
+                  {(user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname)).charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56 mt-2 rounded-xl border-slate-200 shadow-xl dark:border-slate-800">
+            <DropdownMenuLabel className="font-normal py-3 px-3">
+              <div className="flex flex-col space-y-1.5">
+                <p className="text-sm font-semibold leading-none truncate text-slate-900 dark:text-slate-100">
+                  {user.displayName || DUMMY_PROFILE.nickname}
+                </p>
+                <p className="text-xs leading-none text-slate-500 dark:text-slate-400 truncate">
+                  {user.email || "이메일 정보 없음"}
+                </p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-800" />
+            <DropdownMenuItem 
+              onClick={() => {
+                const profileUrl = `${window.location.origin}/@${user.email ? user.email.split('@')[0] : 'me'}`;
+                navigator.clipboard.writeText(profileUrl);
+                alert('내 프로필 링크가 클립보드에 복사되었습니다!');
+              }}
+              className="cursor-pointer py-2 px-3 text-sm focus:bg-slate-100 dark:focus:bg-slate-800"
+            >
+              <Link2 className="mr-3 h-4 w-4 text-slate-500 dark:text-slate-400" />
+              <span>프로필 링크 복사</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => alert("현재 프로필 설정 편집 기능은 준비 중입니다.")}
+              className="cursor-pointer py-2 px-3 text-sm focus:bg-slate-100 dark:focus:bg-slate-800"
+            >
+              <Settings className="mr-3 h-4 w-4 text-slate-500 dark:text-slate-400" />
+              <span>프로필 설정 편집</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="cursor-pointer py-2 px-3 text-sm focus:bg-slate-100 dark:focus:bg-slate-800"
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun className="mr-3 h-4 w-4 text-slate-500 dark:text-slate-400" />
+              ) : (
+                <Moon className="mr-3 h-4 w-4 text-slate-500 dark:text-slate-400" />
+              )}
+              <span>{resolvedTheme === "dark" ? "라이트 모드" : "다크 모드"}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-800" />
+            <DropdownMenuItem 
+              onClick={handleLogout} 
+              className="text-red-500 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950/50 cursor-pointer font-medium py-2 px-3 text-sm"
+            >
+              <LogOut className="mr-3 h-4 w-4" />
+              <span>로그아웃</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
       <div className="z-10 flex w-full max-w-md flex-col items-center gap-10">
