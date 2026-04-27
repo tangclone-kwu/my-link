@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, getDocs, where } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, getDocs, where } from "firebase/firestore";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -47,23 +48,18 @@ const formSchema = z.object({
 })
 
 export default function Page() {
-  const [links, setLinks] = useState<LinkItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
   const [deletingLink, setDeletingLink] = useState<LinkItem | null>(null);
   
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [profile, setProfile] = useState<{ nickname: string; bio: string } | null>(null);
   const [editingField, setEditingField] = useState<'nickname' | 'bio' | null>(null);
   const [editValue, setEditValue] = useState("");
 
   const { resolvedTheme, setTheme } = useTheme();
-
-  const currentNickname = profile?.nickname || (user?.email ? user.email.split('@')[0] : (user?.displayName || DUMMY_PROFILE.nickname));
+  const queryClient = useQueryClient();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -71,7 +67,7 @@ export default function Page() {
       title: "",
       url: "",
     },
-  })
+  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -81,18 +77,12 @@ export default function Page() {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (!user) {
-      setLinks([]);
-      setProfile(null);
-      setIsInitialLoading(false);
-      return;
-    }
-
-    setIsInitialLoading(true);
-
-    const profileRef = doc(db, "users", user.uid);
-    const unsubscribeProfile = onSnapshot(profileRef, async (docSnapshot) => {
+  const { data: profile, isLoading: isProfileLoading } = useQuery({
+    queryKey: ['profile', user?.uid],
+    queryFn: async () => {
+      if (!user) return null;
+      const profileRef = doc(db, "users", user.uid);
+      const docSnapshot = await getDoc(profileRef);
       if (!docSnapshot.exists()) {
         const defaultNickname = user.email ? user.email.split('@')[0] : (user.displayName || DUMMY_PROFILE.nickname);
         const newProfile = {
@@ -103,52 +93,40 @@ export default function Page() {
           updatedAt: new Date().toISOString()
         };
         await setDoc(profileRef, newProfile);
-        setProfile(newProfile);
-      } else {
-        setProfile(docSnapshot.data() as { nickname: string; bio: string });
+        return newProfile;
       }
-    });
+      return docSnapshot.data() as { nickname: string; bio: string };
+    },
+    enabled: !!user,
+  });
 
-    const q = query(
-      collection(db, "users", user.uid, "links"),
-      orderBy("createdAt", "desc")
-    );
-    const unsubscribeLinks = onSnapshot(q, (snapshot) => {
-      const fetchedLinks = snapshot.docs.map(doc => doc.data() as LinkItem);
-      setLinks(fetchedLinks);
-      setIsInitialLoading(false);
-    }, (error) => {
-      console.error("Error fetching links: ", error);
-      setIsInitialLoading(false);
-    });
+  const { data: links = [], isLoading: isLinksLoading } = useQuery({
+    queryKey: ['links', user?.uid],
+    queryFn: async () => {
+      if (!user) return [];
+      const q = query(
+        collection(db, "users", user.uid, "links"),
+        orderBy("createdAt", "desc")
+      );
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => doc.data() as LinkItem);
+    },
+    enabled: !!user,
+  });
 
-    return () => {
-      unsubscribeProfile();
-      unsubscribeLinks();
-    };
-  }, [user]);
+  const currentNickname = profile?.nickname || (user?.email ? user.email.split('@')[0] : (user?.displayName || DUMMY_PROFILE.nickname));
 
   useEffect(() => {
-    if (!isOpen) {
-      form.reset();
-    }
+    if (!isOpen) form.reset();
   }, [isOpen, form]);
 
   const editForm = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      title: "",
-      url: "",
-    },
+    defaultValues: { title: "", url: "" },
   });
 
   useEffect(() => {
-    if (editingLink) {
-      editForm.reset({
-        title: editingLink.title,
-        url: editingLink.url,
-      });
-    }
+    if (editingLink) editForm.reset({ title: editingLink.title, url: editingLink.url });
   }, [editingLink, editForm]);
 
   const handleLogin = async () => {
@@ -169,104 +147,121 @@ export default function Page() {
     }
   };
 
-  const handleProfileUpdate = async () => {
-    if (!user || !profile || !editingField) return;
+  const updateProfileMutation = useMutation({
+    mutationFn: async ({ field, value }: { field: 'nickname' | 'bio'; value: string }) => {
+      if (!user) throw new Error("유저 정보가 없습니다.");
+      const trimmedValue = value.trim();
 
-    try {
-      const trimmedValue = editValue.trim();
-
-      if (trimmedValue === profile[editingField]) {
-        setEditingField(null);
-        return;
-      }
-
-      if (editingField === 'nickname') {
-        if (trimmedValue === '') {
-          alert('닉네임을 입력해주세요.');
-          setEditingField(null);
-          return;
-        }
-
+      if (field === 'nickname') {
+        if (trimmedValue === '') throw new Error('닉네임을 입력해주세요.');
         const q = query(collection(db, "users"), where("nickname", "==", trimmedValue));
         const snapshot = await getDocs(q);
-        const duplicate = snapshot.docs.find(doc => doc.id !== user.uid);
-        if (duplicate) {
-          alert('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요!');
-          setEditingField(null);
-          return;
-        }
+        const duplicate = snapshot.docs.find(d => d.id !== user.uid);
+        if (duplicate) throw new Error('이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요!');
       }
 
       await updateDoc(doc(db, "users", user.uid), {
-        [editingField]: trimmedValue,
+        [field]: trimmedValue,
         updatedAt: new Date().toISOString()
       });
-      
+      return trimmedValue;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.uid] });
       setEditingField(null);
-    } catch (error) {
-      console.error("Error updating profile: ", error);
-      alert("프로필 수정 중 오류가 발생했습니다.");
+    },
+    onError: (error: any) => {
+      console.error("Error updating profile:", error);
+      alert(error.message || "프로필 수정 중 오류가 발생했습니다.");
+      setEditingField(null);
     }
+  });
+
+  const handleProfileUpdate = () => {
+    if (!profile || !editingField) return;
+    const trimmedValue = editValue.trim();
+    if (trimmedValue === profile[editingField]) {
+      setEditingField(null);
+      return;
+    }
+    updateProfileMutation.mutate({ field: editingField, value: editValue });
   };
 
-  const handleDelete = async () => {
-    if (!deletingLink || !user) return;
-    setIsSubmitting(true);
-    try {
-      await deleteDoc(doc(db, "users", user.uid, "links", deletingLink.linkId));
+  const deleteLinkMutation = useMutation({
+    mutationFn: async (linkId: string) => {
+      if (!user) throw new Error("유저 정보가 없습니다.");
+      await deleteDoc(doc(db, "users", user.uid, "links", linkId));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['links', user?.uid] });
       setDeletingLink(null);
-    } catch (error) {
-      console.error("Error deleting document: ", error);
+    },
+    onError: (error) => {
+      console.error("Error deleting link: ", error);
       alert("링크 삭제 중 오류가 발생했습니다.");
-    } finally {
-      setIsSubmitting(false);
     }
+  });
+
+  const handleDelete = () => {
+    if (!deletingLink) return;
+    deleteLinkMutation.mutate(deletingLink.linkId);
   };
 
-  const onEditSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (!editingLink || !user) return;
-    setIsSubmitting(true);
-    const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
-
-    try {
-      await updateDoc(doc(db, "users", user.uid, "links", editingLink.linkId), {
+  const editLinkMutation = useMutation({
+    mutationFn: async ({ linkId, values }: { linkId: string; values: z.infer<typeof formSchema> }) => {
+      if (!user) throw new Error("유저 정보가 없습니다.");
+      const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
+      await updateDoc(doc(db, "users", user.uid, "links", linkId), {
         title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
         url: formattedUrl,
         updatedAt: new Date().toISOString(),
       });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['links', user?.uid] });
       setEditingLink(null);
-    } catch (error) {
-      console.error("Error updating document: ", error);
+    },
+    onError: (error) => {
+      console.error("Error editing link: ", error);
       alert("링크 수정 중 오류가 발생했습니다.");
-    } finally {
-      setIsSubmitting(false);
     }
+  });
+
+  const onEditSubmit = (values: z.infer<typeof formSchema>) => {
+    if (!editingLink) return;
+    editLinkMutation.mutate({ linkId: editingLink.linkId, values });
   };
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (!user) return;
-    setIsSubmitting(true);
-    const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
-
-    const newLinkId = `link_${Date.now()}`;
-    const newLink: LinkItem = {
-      linkId: newLinkId,
-      title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
-      url: formattedUrl,
-      createdAt: new Date().toISOString(),
-      clickCount: 0,
-    };
-
-    try {
+  const addLinkMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof formSchema>) => {
+      if (!user) throw new Error("유저 정보가 없습니다.");
+      const formattedUrl = values.url.startsWith('http') ? values.url : `https://${values.url}`;
+      const newLinkId = `link_${Date.now()}`;
+      const newLink: LinkItem = {
+        linkId: newLinkId,
+        title: (values.title || "").trim() || formattedUrl.replace(/^https?:\/\/(www\.)?/, ''),
+        url: formattedUrl,
+        createdAt: new Date().toISOString(),
+        clickCount: 0,
+      };
       await setDoc(doc(collection(db, "users", user.uid, "links"), newLinkId), newLink);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['links', user?.uid] });
       setIsOpen(false);
-    } catch (error) {
-      console.error("Error adding document: ", error);
+    },
+    onError: (error) => {
+      console.error("Error adding link: ", error);
       alert("링크 추가 중 오류가 발생했습니다.");
-    } finally {
-      setIsSubmitting(false);
     }
+  });
+
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
+    addLinkMutation.mutate(values);
   };
+
+  const isSubmitting = updateProfileMutation.isPending || deleteLinkMutation.isPending || editLinkMutation.isPending || addLinkMutation.isPending;
+  const isInitialLoading = isProfileLoading || isLinksLoading;
 
   if (authLoading) {
     return (
