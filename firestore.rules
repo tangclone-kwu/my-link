@@ -3,23 +3,38 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // 1. 유저 본체 (프로필: nickname, bio, email 등이 저장되는 곳)
-    // 참고: 기존 DB 구조상 users/{userid}/profile 이 아닌 users/{userid} 본체에 프로필이 저장됩니다.
+    // 1. 유저 본체 (프로필 정보 보관)
     match /users/{userId} {
-      // 읽기: 누구나 퍼블릭 프로필 조회를 위해 접근 가능
       allow read: if true;
       
-      // 쓰기: 로그인한 고유 UID와 문서 ID가 일치할 때만 프로필 생성 및 편집 허용
-      allow write: if request.auth != null && request.auth.uid == userId;
+      // 쓰기 및 수정 권한
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   
+                   // [무결성 1] 닉네임 타입 및 글자 수 제한 (공백 불가, 최대 30자)
+                   && request.resource.data.nickname is string
+                   && request.resource.data.nickname.size() > 0 
+                   && request.resource.data.nickname.size() <= 30
+                   
+                   // [무결성 2] 악의적인 UID 변조 방지 (수정 시 기존 uid 유지)
+                   // 단, 처음 생성할 때(resource == null)는 무조건 통과하도록 처리
+                   && (resource == null || request.resource.data.uid == resource.data.uid);
     }
 
-    // 2. 유저별 링크 모음 (users/{userid}/links 서브컬렉션)
+    // 2. 유저별 링크 모음 서브컬렉션
     match /users/{userId}/links/{linkId} {
-      // 읽기: 누구나 퍼블릭 링크를 클릭하고 보기 위해 접근 가능
       allow read: if true;
       
-      // 쓰기: 본인 소유의 프로필(userId) 하위에 있는 링크만 추가/삭제/수정 가능
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null 
+                   && request.auth.uid == userId
+                   
+                   // [무결성 3] 타이틀의 존재 여부 및 길이 제한
+                   && request.resource.data.title is string
+                   && request.resource.data.title.size() <= 100
+                   
+                   // [무결성 4] URL 검증: 반드시 http 가 포함된 올바른 주소 형태만 허용
+                   && request.resource.data.url is string
+                   && request.resource.data.url.matches('^https?://.*');
     }
   }
 }
