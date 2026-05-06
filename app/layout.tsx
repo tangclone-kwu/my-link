@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { Geist, JetBrains_Mono } from "next/font/google"
 
 import "./globals.css"
@@ -11,6 +12,15 @@ const fontSans = Geist({
 })
 
 const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-mono'})
+
+export const metadata: Metadata = {
+  title: {
+    default: "My Link - 나만의 모든 링크",
+    template: "%s | My Link",
+  },
+  description: "나만의 모든 링크, 단 하나의 주소로. 여러 곳에 흩어져 있는 내 정보를 한 곳에 모아보세요.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+};
 
 export default function RootLayout({
   children,
