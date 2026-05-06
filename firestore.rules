@@ -68,17 +68,21 @@ service cloud.firestore {
                     && request.resource.data.url is string
                     && request.resource.data.url.matches('^https?://.*');
 
-      allow update: if request.auth != null
-                    && request.auth.uid == userId
-
-                    // [무결성] 링크 수정 시 createdAt 변조 방지
-                    && request.resource.data.createdAt == resource.data.createdAt
-
-                    && request.resource.data.keys().hasOnly(['linkId', 'title', 'url', 'createdAt', 'clickCount', 'updatedAt'])
-                    && request.resource.data.title is string
-                    && request.resource.data.title.size() <= 100
-                    && request.resource.data.url is string
-                    && request.resource.data.url.matches('^https?://.*');
+      allow update: if (
+                      // [1] 소유자가 수정하는 경우 (기존 규칙 유지)
+                      request.auth != null
+                      && request.auth.uid == userId
+                      && request.resource.data.createdAt == resource.data.createdAt
+                      && request.resource.data.keys().hasOnly(['linkId', 'title', 'url', 'createdAt', 'clickCount', 'updatedAt'])
+                      && request.resource.data.title is string
+                      && request.resource.data.title.size() <= 100
+                      && request.resource.data.url is string
+                      && request.resource.data.url.matches('^https?://.*')
+                    ) || (
+                      // [2] 방문자가 클릭 카운트만 수정하는 경우 누구나 허용
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
+                      && request.resource.data.clickCount is number
+                    );
 
       allow delete: if request.auth != null
                     && request.auth.uid == userId;

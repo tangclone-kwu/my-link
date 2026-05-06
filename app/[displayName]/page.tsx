@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, doc, updateDoc, increment } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,18 @@ export default function ProfileViewer({
     },
     enabled: !!userData?.uid,
   });
+
+  const handleLinkClick = async (linkId: string) => {
+    if (!userData?.uid) return;
+    try {
+      const linkRef = doc(db, "users", userData.uid, "links", linkId);
+      await updateDoc(linkRef, {
+        clickCount: increment(1)
+      });
+    } catch (error) {
+      console.error("Error updating click count:", error);
+    }
+  };
 
   // Loading state
   if (isUserLoading || !decodedName || (isUserLoading === false && isLinksLoading && userData)) {
@@ -124,6 +136,7 @@ export default function ProfileViewer({
                 href={link.url}
                 target="_blank" 
                 rel="noopener noreferrer" 
+                onClick={() => handleLinkClick(link.linkId)}
                 className="group relative flex w-full items-center justify-between overflow-hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 transition-all hover:shadow-md hover:ring-indigo-300 dark:bg-slate-900 dark:ring-slate-800 dark:hover:ring-indigo-700 hover:-translate-y-1"
               >
                 <div className="absolute inset-x-0 bottom-0 h-1 origin-left scale-x-0 transform bg-gradient-to-r from-indigo-500 to-cyan-400 transition-transform duration-300 group-hover:scale-x-100"></div>

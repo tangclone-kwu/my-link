@@ -764,14 +764,23 @@ export default function Page() {
                       <span className="text-md font-semibold tracking-wide truncate">
                         {link.title}
                       </span>
-                      {link.updatedAt && (
-                        <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium truncate tracking-wide">
-                          최근 수정 {new Intl.DateTimeFormat('ko-KR', { 
-                            year: '2-digit', month: '2-digit', day: '2-digit', 
-                            hour: '2-digit', minute: '2-digit', hour12: false
-                          }).format(new Date(link.updatedAt))}
+                      <div className="flex items-center justify-center gap-2 mt-0.5">
+                        <span className="flex items-center text-[11px] text-slate-400 dark:text-slate-500 font-medium tracking-wide">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+                          {link.clickCount || 0}
                         </span>
-                      )}
+                        {link.updatedAt && (
+                          <>
+                            <span className="text-[10px] text-slate-300 dark:text-slate-600">•</span>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium truncate tracking-wide">
+                              최근 수정 {new Intl.DateTimeFormat('ko-KR', { 
+                                year: '2-digit', month: '2-digit', day: '2-digit', 
+                                hour: '2-digit', minute: '2-digit', hour12: false
+                              }).format(new Date(link.updatedAt))}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </a>
                   
