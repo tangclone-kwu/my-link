@@ -450,6 +450,15 @@ export default function Page() {
               <span>내 프로필 방문</span>
             </DropdownMenuItem>
             <DropdownMenuItem 
+              onClick={() => {
+                window.location.href = '/stats';
+              }}
+              className="cursor-pointer py-2 px-3 text-sm focus:bg-slate-100 dark:focus:bg-slate-800"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-3 h-4 w-4 text-slate-500 dark:text-slate-400"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+              <span>통계 보기</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem 
               onClick={() => alert("현재 프로필 설정 편집 기능은 준비 중입니다.")}
               className="cursor-pointer py-2 px-3 text-sm focus:bg-slate-100 dark:focus:bg-slate-800"
             >
