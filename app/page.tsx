@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -546,16 +547,18 @@ export default function Page() {
             </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 mt-2 rounded-xl border-slate-200 shadow-xl dark:border-slate-800">
-            <DropdownMenuLabel className="font-normal py-3 px-3">
-              <div className="flex flex-col space-y-1.5">
-                <p className="text-sm font-semibold leading-none truncate text-slate-900 dark:text-slate-100">
-                  {user.displayName || DUMMY_PROFILE.nickname}
-                </p>
-                <p className="text-xs leading-none text-slate-500 dark:text-slate-400 truncate">
-                  {user.email || "이메일 정보 없음"}
-                </p>
-              </div>
-            </DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="font-normal py-3 px-3">
+                <div className="flex flex-col space-y-1.5">
+                  <p className="text-sm font-semibold leading-none truncate text-slate-900 dark:text-slate-100">
+                    {user.displayName || DUMMY_PROFILE.nickname}
+                  </p>
+                  <p className="text-xs leading-none text-slate-500 dark:text-slate-400 truncate">
+                    {user.email || "이메일 정보 없음"}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-800" />
             <DropdownMenuItem 
               onClick={() => {
