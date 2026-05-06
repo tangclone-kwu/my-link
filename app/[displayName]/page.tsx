@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { use } from "react";
+import Link from "next/link";
 
 interface LinkItem {
   linkId: string;
@@ -164,9 +165,9 @@ export default function ProfileViewer({
         </section>
 
         <footer className="mt-10 py-6 text-center text-sm text-slate-400 dark:text-slate-500 font-medium tracking-wide">
-          <a href="/" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+          <Link href="/" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
             Made with My Link
-          </a>
+          </Link>
         </footer>
       </div>
     </main>

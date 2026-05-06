@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, getDocs, where, runTransaction } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, getDocs, runTransaction } from "firebase/firestore";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
@@ -223,7 +223,7 @@ export default function Page() {
 
       return { previousProfile };
     },
-    onError: (error: any, variables, context) => {
+    onError: (error: Error, variables, context) => {
       console.error("Error updating profile:", error);
       alert(error.message || "프로필 수정 중 오류가 발생했습니다.");
       
